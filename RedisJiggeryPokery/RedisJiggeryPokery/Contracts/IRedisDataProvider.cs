@@ -11,6 +11,6 @@ namespace RedisJiggeryPokery.Contracts
 
         void InsertKeyValuePair(string key, T itemToBeSaved, bool optimisticLock = false);
 
-        void InsertKeyValuePair(string key, string jsonSerializedItemToBeSaved, bool optimisticLock = false);
+        bool InsertKeyValuePair(string key, string jsonSerializedItemToBeSaved, bool optimisticLock = false);
     }
 }
