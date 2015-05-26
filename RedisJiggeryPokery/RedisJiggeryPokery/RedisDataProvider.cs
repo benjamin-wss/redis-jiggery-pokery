@@ -29,7 +29,7 @@ namespace RedisJiggeryPokery
         /// </param>
         /// <param name="targetDatabaseIndex">
         /// Target Redis Database Index.
-        /// Defaults to 0 as per StackExchange.Redis API defaults
+        /// Defaults to 0 as per StackExchange.Redis API defaults.
         /// </param>
         public RedisDataProvider(
             string connectionString, 
@@ -208,7 +208,7 @@ namespace RedisJiggeryPokery
              * facilated by having a set that stores all the keys.
              * 
              * The transaction will ensure that the key value pair insertion and the 
-             * corresponding set entry will do hand in hand.
+             * corresponding set entry will go hand in hand.
              * **/
             var transaction = dataBase.CreateTransaction();
             transaction.StringSetAsync(key, value);
