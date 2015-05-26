@@ -8,5 +8,9 @@ namespace RedisJiggeryPokery.Contracts
         int DatabaseIndex { get; set; }
 
         IList<T> GetAllKeyValuePair(int dbIndex = 0);
+
+        void InsertKeyValuePair(string key, T itemToBeSaved, bool optimisticLock = false);
+
+        void InsertKeyValuePair(string key, string jsonSerializedItemToBeSaved, bool optimisticLock = false);
     }
 }
