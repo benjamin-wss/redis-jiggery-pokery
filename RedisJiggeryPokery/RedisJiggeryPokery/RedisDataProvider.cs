@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
 using RedisJiggeryPokery.Contracts;
+using RedLock;
 using StackExchange.Redis;
 
 namespace RedisJiggeryPokery
@@ -41,7 +42,7 @@ namespace RedisJiggeryPokery
             _databaseIndex = targetDatabaseIndex;
         }
 
-        public string ConnectionString
+        public string RedisConnectionString
         {
             get
             {
@@ -60,7 +61,7 @@ namespace RedisJiggeryPokery
             }
         }
 
-        public int DatabaseIndex
+        public int RedisDatabaseIndex
         {
             get
             {
@@ -80,7 +81,7 @@ namespace RedisJiggeryPokery
             {
                 if (_redisConnectionMultiPlexer == null)
                 {
-                    ConnectionMultiplexer.Connect(ConnectionString);
+                    ConnectionMultiplexer.Connect(RedisConnectionString);
                 }
 
                 return _redisConnectionMultiPlexer;
@@ -98,7 +99,7 @@ namespace RedisJiggeryPokery
 
             return keysInSet.Count > 0 ? 
                 GetValuesBasedOnSetValues(targetDatabase, keysInSet) : 
-                GetAllValuesByWildcard(RedisConnectionMultiPlexer, targetDatabase, DatabaseIndex);
+                GetAllValuesByWildcard(RedisConnectionMultiPlexer, targetDatabase, RedisDatabaseIndex);
         }
 
         private static IList<T> GetValuesBasedOnSetValues(IDatabase targetDatabase, IList<RedisValue> keysRetrievedFromSet)
@@ -182,15 +183,42 @@ namespace RedisJiggeryPokery
 
             if (optimisticLock)
             {
-                // TODO: Write Redlock.NET optimistic locking
-                //EnsureAndUpdateTypeSet(RedisConnectionMultiPlexer, DatabaseIndex, key);
+                InsertKeyValuePairWithOptimisticLockAndNoRetries(
+                    RedisConnectionMultiPlexer, 
+                    RedisDatabaseIndex, 
+                    key,
+                    jsonSerializedItemToBeSaved);
             }
 
-            return InsertKeyValuePairNoLock(RedisConnectionMultiPlexer, DatabaseIndex, key, jsonSerializedItemToBeSaved);
+            return InsertKeyValuePairTransaction(RedisConnectionMultiPlexer, RedisDatabaseIndex, key, jsonSerializedItemToBeSaved);
         }
 
+        private static bool InsertKeyValuePairWithOptimisticLockAndNoRetries(
+            ConnectionMultiplexer connectionMultiplexer, 
+            int databaseIndex, 
+            string key, 
+            string value)
+        {
+            var endPoint = new[]
+            {
+                connectionMultiplexer.GetEndPoints().First()
+            };
 
-        private static bool InsertKeyValuePairNoLock(
+            var expiry = TimeSpan.FromSeconds(30);
+
+            using (var redisLockFactory = new RedisLockFactory(endPoint))
+            {
+                using (var redisLock = redisLockFactory.Create(key, expiry))
+                {
+                    if (redisLock.IsAcquired)
+                    {
+                        return InsertKeyValuePairTransaction(connectionMultiplexer, databaseIndex, key, value);
+                    }
+                }
+            }
+        }
+
+        private static bool InsertKeyValuePairTransaction(
             ConnectionMultiplexer connectionMultiplexer, 
             int databaseIndex,
             string key,
