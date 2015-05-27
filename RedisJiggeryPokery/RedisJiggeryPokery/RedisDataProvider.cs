@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using RedisJiggeryPokery.Contracts;
+using RedisJiggeryPokery.Exceptions;
 using RedLock;
 using StackExchange.Redis;
 
@@ -221,10 +222,10 @@ namespace RedisJiggeryPokery
                     {
                         return InsertKeyValuePairTransaction(connectionMultiplexer, databaseIndex, key, value);
                     }
+
+                    throw RedisOptimisticLockException.GenerateBasicException(key, value);
                 }
             }
-
-            return false;
         }
 
         private static bool InsertKeyValuePairTransaction(
@@ -437,6 +438,10 @@ namespace RedisJiggeryPokery
                             };
 
                             DeleteKeyValuePair_NoLock(targetKey, connectionMultiplexer, dbIndex);
+                        }
+                        else
+                        {
+                            throw RedisOptimisticLockException.GenerateBasicException(redisKey, string.Empty);
                         }
                     }
                 }

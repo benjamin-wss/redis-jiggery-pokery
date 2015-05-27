@@ -54,13 +54,17 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Contracts\IRedisDataProvider.cs" />
+    <Compile Include="Exceptions\RedisOptimisticLockException.cs" />
     <Compile Include="RedisDataProvider.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
+    <None Include="packages.config">
+      <SubType>Designer</SubType>
+    </None>
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="Exceptions\Extensions\" />
     <Folder Include="Utilities\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
