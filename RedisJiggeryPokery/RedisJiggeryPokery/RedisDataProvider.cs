@@ -216,6 +216,8 @@ namespace RedisJiggeryPokery
                     }
                 }
             }
+
+            return false;
         }
 
         private static bool InsertKeyValuePairTransaction(
