@@ -7,10 +7,16 @@ namespace RedisJiggeryPokery.Contracts
         string RedisConnectionString { get; set; }
         int RedisDatabaseIndex { get; set; }
 
-        IList<T> GetAllKeyValuePair(int dbIndex = 0);
+        IList<T> GetAllValues(int dbIndex = 0);
 
-        void InsertKeyValuePair(string key, T itemToBeSaved, bool optimisticLock = false);
+        IDictionary<string, T> GetAllKeyValuePairs(int dbIndex = 0);
 
-        bool InsertKeyValuePair(string key, string jsonSerializedItemToBeSaved, bool optimisticLock = false);
+        void InsertKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false);
+
+        bool InsertKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0, bool optimisticLock = false);
+
+        T GetKeyValuePairByKey(string key, int dbIndex = 0);
+
+        IList<T> GetKeyValuePairsByKey(string[] key, int dbIndex = 0);
     }
 }

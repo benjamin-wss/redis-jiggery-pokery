@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using RedisJiggeryPokery.Contracts;
 using RedLock;
@@ -89,13 +91,14 @@ namespace RedisJiggeryPokery
             set { _redisConnectionMultiPlexer = value; }
         }
 
-        public IList<T> GetAllKeyValuePair(int dbIndex = 0)
+        #region GetAllValues
+        public IList<T> GetAllValues(int dbIndex = 0)
         {
-            var targetDatabase = RedisConnectionMultiPlexer.GetDatabase(dbIndex);
+            var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
 
-            var targetType = typeof(T);
-            var targetTypeNameString = targetType.Name;
-            var keysInSet = targetDatabase.SetMembers(targetTypeNameString).ToList();
+            var keysInSet = GetAllKeysForDataTypeByObjectType(typeof (T), RedisConnectionMultiPlexer, redisDatabaseIndex);
+
+            var targetDatabase = RedisConnectionMultiPlexer.GetDatabase(redisDatabaseIndex);
 
             return keysInSet.Count > 0 ? 
                 GetValuesBasedOnSetValues(targetDatabase, keysInSet) : 
@@ -166,31 +169,37 @@ namespace RedisJiggeryPokery
             return returnPayload;
         }
 
-        public void InsertKeyValuePair(string key, T itemToBeSaved, bool optimisticLock = false)
+        #endregion
+
+        #region InsertKeyValuePair
+
+        public void InsertKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
         {
             if (key == null) throw new ArgumentNullException("key");
             if (itemToBeSaved == null) throw new ArgumentNullException("itemToBeSaved");
 
             var serializedObject = JsonConvert.SerializeObject(itemToBeSaved);
 
-            InsertKeyValuePair(key, serializedObject, optimisticLock);
+            InsertKeyValuePair(key, serializedObject, dbIndex, optimisticLock);
         }
 
-        public bool InsertKeyValuePair(string key, string jsonSerializedItemToBeSaved, bool optimisticLock = false)
+        public bool InsertKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
         {
             if (key == null) throw new ArgumentNullException("key");
             if (jsonSerializedItemToBeSaved == null) throw new ArgumentNullException("jsonSerializedItemToBeSaved");
 
+            var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
+
             if (optimisticLock)
             {
-                InsertKeyValuePairWithOptimisticLockAndNoRetries(
-                    RedisConnectionMultiPlexer, 
-                    RedisDatabaseIndex, 
+                return InsertKeyValuePairWithOptimisticLockAndNoRetries(
+                    RedisConnectionMultiPlexer,
+                    redisDatabaseIndex, 
                     key,
                     jsonSerializedItemToBeSaved);
             }
 
-            return InsertKeyValuePairTransaction(RedisConnectionMultiPlexer, RedisDatabaseIndex, key, jsonSerializedItemToBeSaved);
+            return InsertKeyValuePairTransaction(RedisConnectionMultiPlexer, redisDatabaseIndex, key, jsonSerializedItemToBeSaved);
         }
 
         private static bool InsertKeyValuePairWithOptimisticLockAndNoRetries(
@@ -247,5 +256,126 @@ namespace RedisJiggeryPokery
 
             return transactionSuccessful;
         }
+
+        #endregion
+
+        #region GetAllKeyValuePairs
+
+        public IDictionary<string, T> GetAllKeyValuePairs(int dbIndex = 0)
+        {
+            var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
+
+            var keysInSet = GetAllKeysForDataTypeByObjectType(typeof(T), RedisConnectionMultiPlexer, redisDatabaseIndex);
+
+            if (keysInSet.Count > 0)
+            {
+                return ReturnValuesBasedOnKeySet(keysInSet, RedisConnectionMultiPlexer, redisDatabaseIndex);
+            }
+
+            return ReturnValuesViaWildcardSearch(typeof(T), RedisConnectionMultiPlexer, redisDatabaseIndex);
+        }
+
+        private static IDictionary<string, T> ReturnValuesBasedOnKeySet(
+            IList<RedisValue> keysInSet,
+            ConnectionMultiplexer connectionMultiplexer, 
+            int dbIndex)
+        {
+            if (keysInSet == null) throw new ArgumentNullException("keysInSet");
+            if (connectionMultiplexer == null) throw new ArgumentNullException("connectionMultiplexer");
+
+            var returnValue = new ConcurrentDictionary<string, T>();
+            var targetDatabase = connectionMultiplexer.GetDatabase(dbIndex);
+
+            Parallel.ForEach(keysInSet, keyInSet =>
+            {
+                var key = (string)keyInSet;
+                var value = targetDatabase.StringGet((string)keyInSet);
+                returnValue.TryAdd(key, JsonConvert.DeserializeObject<T>(value));
+            });
+
+            return returnValue;
+        }
+
+        private static IDictionary<string, T> ReturnValuesViaWildcardSearch(
+            Type targetType,
+            ConnectionMultiplexer connectionMultiplexer,
+            int dbIndex)
+        {
+            if (targetType == null) throw new ArgumentNullException("targetType");
+            if (connectionMultiplexer == null) throw new ArgumentNullException("connectionMultiplexer");
+
+            var endPoints = connectionMultiplexer.GetEndPoints();
+            var keyPrefix = targetType.Namespace;
+            var targetKeys = new List<string>();
+
+            foreach (var endPoint in endPoints)
+            {
+                var targetEndpoint = connectionMultiplexer.GetServer(endPoint);
+
+                var targetKeysWithinEndPoint = targetEndpoint
+                    .Keys(dbIndex, string.Concat(keyPrefix, "*"))
+                    .Select(x => (string)x)
+                    .ToList();
+
+                // Ensure only unique keys get retrieved. Again, looks retarded, needs a closer look.
+                var uniqueKeys = targetKeysWithinEndPoint.Where(x => !targetKeys.Contains(x)).ToList();
+
+                targetKeys.AddRange(uniqueKeys);
+            }
+
+            var targetDatabase = connectionMultiplexer.GetDatabase(dbIndex);
+            var returnPayload = new ConcurrentDictionary<string, T>();
+
+            Parallel.ForEach(targetKeys, targetKey =>
+            {
+                var returnValue = targetDatabase.StringGet(targetKey);
+                var returnValueCasted = JsonConvert.DeserializeObject<T>(returnValue);
+                returnPayload.TryAdd(targetKey, returnValueCasted);
+            });
+
+            return returnPayload;
+        }
+
+        #endregion
+
+        public T GetKeyValuePairByKey(string key, int dbIndex = 0)
+        {
+            var request = new[]
+            {
+                key
+            };
+
+            return GetKeyValuePairsByKey(request, dbIndex).FirstOrDefault();
+        }
+
+        public IList<T> GetKeyValuePairsByKey(string[] key, int dbIndex = 0)
+        {
+            var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
+
+            var database = RedisConnectionMultiPlexer.GetDatabase(redisDatabaseIndex);
+
+            var redisKeys = key.Select(x => (RedisKey) x).ToArray();
+            var retrievedValues = database.StringGet(redisKeys);
+
+            var strongTypedValaues = retrievedValues.Select(x => JsonConvert.DeserializeObject<T>(x)).ToList();
+
+            return strongTypedValaues;
+        }
+
+        #region GenericHelpers
+
+        private static IList<RedisValue> GetAllKeysForDataTypeByObjectType(
+            Type targetType, 
+            ConnectionMultiplexer connectionMultiplexer,
+            int databaseIndex)
+        {
+            var targetDatabase = connectionMultiplexer.GetDatabase(databaseIndex);
+            var targetTypeNameString = targetType.Name;
+            var keysInSet = targetDatabase.SetMembers(targetTypeNameString).ToList();
+
+            return keysInSet;
+        }
+
+        #endregion
     }
 }
