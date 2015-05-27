@@ -58,8 +58,6 @@ namespace RedisJiggeryPokery
             set
             {
                 _connectionString = value;
-
-                RedisConnectionMultiPlexer = ConnectionMultiplexer.Connect(_connectionString);
             }
         }
 
@@ -83,7 +81,7 @@ namespace RedisJiggeryPokery
             {
                 if (_redisConnectionMultiPlexer == null)
                 {
-                    ConnectionMultiplexer.Connect(RedisConnectionString);
+                    _redisConnectionMultiPlexer = ConnectionMultiplexer.Connect(RedisConnectionString);
                 }
 
                 return _redisConnectionMultiPlexer;
@@ -173,14 +171,14 @@ namespace RedisJiggeryPokery
 
         #region InsertKeyValuePair
 
-        public void InsertOrUpdateKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
+        public bool InsertOrUpdateKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
         {
             if (key == null) throw new ArgumentNullException("key");
             if (itemToBeSaved == null) throw new ArgumentNullException("itemToBeSaved");
 
             var serializedObject = JsonConvert.SerializeObject(itemToBeSaved);
 
-            InsertOrUpdateKeyValuePair(key, serializedObject, dbIndex, optimisticLock);
+            return InsertOrUpdateKeyValuePair(key, serializedObject, dbIndex, optimisticLock);
         }
 
         public bool InsertOrUpdateKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0, bool optimisticLock = false)

@@ -11,7 +11,7 @@ namespace RedisJiggeryPokery.Contracts
 
         IDictionary<string, T> GetAllKeyValuePairs(int dbIndex = 0);
 
-        void InsertOrUpdateKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false);
+        bool InsertOrUpdateKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false);
 
         bool InsertOrUpdateKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0, bool optimisticLock = false);
 
