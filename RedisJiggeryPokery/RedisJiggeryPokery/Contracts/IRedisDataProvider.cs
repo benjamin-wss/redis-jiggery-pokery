@@ -11,12 +11,16 @@ namespace RedisJiggeryPokery.Contracts
 
         IDictionary<string, T> GetAllKeyValuePairs(int dbIndex = 0);
 
-        void InsertKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false);
+        void InsertOrUpdateKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false);
 
-        bool InsertKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0, bool optimisticLock = false);
+        bool InsertOrUpdateKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0, bool optimisticLock = false);
 
         T GetKeyValuePairByKey(string key, int dbIndex = 0);
 
         IList<T> GetKeyValuePairsByKey(string[] key, int dbIndex = 0);
+
+        bool DeleteKeyValuePair(string key, int dbIndex = 0, bool optimisticLock = false);
+
+        bool DeleteKeyValuePair(string[] key, int dbIndex = 0, bool optimisticLock = false);
     }
 }

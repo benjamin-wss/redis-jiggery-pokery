@@ -173,17 +173,17 @@ namespace RedisJiggeryPokery
 
         #region InsertKeyValuePair
 
-        public void InsertKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
+        public void InsertOrUpdateKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
         {
             if (key == null) throw new ArgumentNullException("key");
             if (itemToBeSaved == null) throw new ArgumentNullException("itemToBeSaved");
 
             var serializedObject = JsonConvert.SerializeObject(itemToBeSaved);
 
-            InsertKeyValuePair(key, serializedObject, dbIndex, optimisticLock);
+            InsertOrUpdateKeyValuePair(key, serializedObject, dbIndex, optimisticLock);
         }
 
-        public bool InsertKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
+        public bool InsertOrUpdateKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
         {
             if (key == null) throw new ArgumentNullException("key");
             if (jsonSerializedItemToBeSaved == null) throw new ArgumentNullException("jsonSerializedItemToBeSaved");
@@ -360,6 +360,111 @@ namespace RedisJiggeryPokery
             var strongTypedValaues = retrievedValues.Select(x => JsonConvert.DeserializeObject<T>(x)).ToList();
 
             return strongTypedValaues;
+        }
+
+        public bool DeleteKeyValuePair(string key, int dbIndex = 0, bool optimisticLock = false)
+        {
+            if (key == null) throw new ArgumentNullException("key");
+
+            var redisKey = new[]
+            {
+                (RedisKey) key
+            };
+
+            var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
+
+            return DeleteKeyValuePair(
+                redisKey, 
+                RedisConnectionMultiPlexer, 
+                redisDatabaseIndex, 
+                optimisticLock);
+        }
+
+        public bool DeleteKeyValuePair(string[] key, int dbIndex = 0, bool optimisticLock = false)
+        {
+            if (key == null) throw new ArgumentNullException("key");
+
+            var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
+
+            return DeleteKeyValuePair(
+                key.Select(x => (RedisKey) x).ToArray(), 
+                RedisConnectionMultiPlexer,
+                redisDatabaseIndex, optimisticLock);
+        }
+
+        private static bool DeleteKeyValuePair(
+            RedisKey[] keysToBeDeleted,
+            ConnectionMultiplexer connectionMultiplexer, 
+            int dbIndex, 
+            bool optimisticLock)
+        {
+            if (keysToBeDeleted == null) throw new ArgumentNullException("keysToBeDeleted");
+            if (connectionMultiplexer == null) throw new ArgumentNullException("connectionMultiplexer");
+
+            if (optimisticLock)
+            {
+                return DeleteKeyValuePair_OptimisticLock_NoRetries(keysToBeDeleted, connectionMultiplexer, dbIndex);
+            }
+
+            return DeleteKeyValuePair_NoLock(keysToBeDeleted, connectionMultiplexer, dbIndex);
+        }
+
+
+        private static bool DeleteKeyValuePair_OptimisticLock_NoRetries(
+            RedisKey[] keysToBeDeleted,
+            ConnectionMultiplexer connectionMultiplexer,
+            int dbIndex)
+        {
+            if (keysToBeDeleted == null) throw new ArgumentNullException("keysToBeDeleted");
+            if (connectionMultiplexer == null) throw new ArgumentNullException("connectionMultiplexer");
+
+            var endPoint = new[]
+            {
+                connectionMultiplexer.GetEndPoints().First()
+            };
+
+            var expiry = TimeSpan.FromSeconds(30);
+
+            using (var redisLockFactory = new RedisLockFactory(endPoint))
+            {
+                foreach (var redisKey in keysToBeDeleted)
+                {
+                    using (var redisLock = redisLockFactory.Create(redisKey, expiry))
+                    {
+                        if (redisLock.IsAcquired)
+                        {
+                            var targetKey = new[]
+                            {
+                                redisKey
+                            };
+
+                            DeleteKeyValuePair_NoLock(targetKey, connectionMultiplexer, dbIndex);
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool DeleteKeyValuePair_NoLock(
+            RedisKey[] keysToBeDeleted,
+            ConnectionMultiplexer connectionMultiplexer,
+            int dbIndex)
+        {
+            if (keysToBeDeleted == null) throw new ArgumentNullException("keysToBeDeleted");
+            if (connectionMultiplexer == null) throw new ArgumentNullException("connectionMultiplexer");
+
+            var targetDatabase = connectionMultiplexer.GetDatabase(dbIndex);
+
+            var returnValue = targetDatabase.KeyDelete(keysToBeDeleted);
+
+            if (returnValue != 0)
+            {
+                return true;
+            }
+
+            return false;
         }
 
         #region GenericHelpers
