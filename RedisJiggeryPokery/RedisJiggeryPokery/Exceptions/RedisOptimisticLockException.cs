@@ -13,8 +13,18 @@ namespace RedisJiggeryPokery.Exceptions
         {
         }
 
+         internal static RedisOptimisticLockException GenerateBasicException(string message)
+        {
+            var currentException = new RedisOptimisticLockException(message);
+
+            return currentException;
+        }
+
         internal static RedisOptimisticLockException GenerateBasicException(string key, string payload, string message = null)
         {
+            if (key == null) throw new ArgumentNullException("key");
+            if (payload == null) throw new ArgumentNullException("payload");
+
             const string messageTemplate = "Item is locked, please try again later. Key : {0} | Value : {1}";
 
             var errorMessage = string.Format(messageTemplate, key, payload);
@@ -24,9 +34,7 @@ namespace RedisJiggeryPokery.Exceptions
                 errorMessage += errorMessage;
             }
 
-            var currentException = new RedisOptimisticLockException(errorMessage);
-
-            return currentException;
+            return GenerateBasicException(errorMessage);
         }
     }
 }

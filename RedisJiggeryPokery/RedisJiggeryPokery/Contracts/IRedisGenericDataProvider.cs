@@ -2,9 +2,16 @@
 
 namespace RedisJiggeryPokery.Contracts
 {
-    public interface IRedisDataProvider<T>
+    public interface IRedisGenericDataProvider<T>
     {
+        /// <summary>
+        /// The connection string to the Redis server
+        /// </summary>
         string RedisConnectionString { get; set; }
+
+        /// <summary>
+        /// Database index number of the database
+        /// </summary>
         int RedisDatabaseIndex { get; set; }
 
         IList<T> GetAllValues(int dbIndex = 0);
@@ -22,5 +29,7 @@ namespace RedisJiggeryPokery.Contracts
         bool DeleteKeyValuePair(string key, int dbIndex = 0, bool optimisticLock = false);
 
         bool DeleteKeyValuePair(string[] key, int dbIndex = 0, bool optimisticLock = false);
+
+        IList<string> GetKeysInSet(int dbIndex = 0);
     }
 }

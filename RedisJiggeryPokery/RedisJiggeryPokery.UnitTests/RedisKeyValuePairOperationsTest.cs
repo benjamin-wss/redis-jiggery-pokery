@@ -20,7 +20,7 @@ namespace RedisJiggeryPokery.IntegrationTests
         [TestMethod]
         public void SaveKeyValuePair_NoLock_Success()
         {
-            var redisDataProvider = new RedisDataProvider<SampleTestObject>("localhost");
+            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>("localhost");
 
             var currentSessionGuid = Guid.NewGuid();
 
@@ -43,7 +43,7 @@ namespace RedisJiggeryPokery.IntegrationTests
         [TestMethod]
         public void SaveKeyValuePair_LockWithNoConcurrentEntries_Success()
         {
-            var redisDataProvider = new RedisDataProvider<SampleTestObject>("localhost");
+            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>("localhost");
 
             var currentSessionGuid = Guid.NewGuid();
 
@@ -66,7 +66,7 @@ namespace RedisJiggeryPokery.IntegrationTests
         [TestMethod]
         public void SaveKeyValuePair_LockWithConcurrentEntries_Success()
         {
-            var redisDataProvider = new RedisDataProvider<SampleTestObject>("localhost");
+            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>("localhost");
 
             var currentSessionGuid = Guid.NewGuid();
 

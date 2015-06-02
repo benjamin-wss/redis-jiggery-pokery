@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using RedisJiggeryPokery.Contracts;
@@ -13,7 +15,7 @@ namespace RedisJiggeryPokery
 {
     // TODO: Investigate multi endpoint stuff. May prove useful.
 
-    public class RedisDataProvider<T> : IRedisDataProvider<T>
+    public class RedisGenericDataProvider<T> : IRedisGenericDataProvider<T>
     {
         private string _connectionString;
         private int _databaseIndex;
@@ -35,14 +37,14 @@ namespace RedisJiggeryPokery
         /// Target Redis Database Index.
         /// Defaults to 0 as per StackExchange.Redis API defaults.
         /// </param>
-        public RedisDataProvider(
-            string connectionString, 
-            ConnectionMultiplexer targetConnectionMultiplexer = null,
-            int targetDatabaseIndex = 0)
+        public RedisGenericDataProvider(
+            string connectionString,
+            int targetDatabaseIndex = 0,
+            ConnectionMultiplexer targetConnectionMultiplexer = null)
         {
             _connectionString = connectionString;
-            _redisConnectionMultiPlexer = targetConnectionMultiplexer;
             _databaseIndex = targetDatabaseIndex;
+            _redisConnectionMultiPlexer = targetConnectionMultiplexer;
         }
 
         public string RedisConnectionString
@@ -91,16 +93,17 @@ namespace RedisJiggeryPokery
         }
 
         #region GetAllValues
+
         public IList<T> GetAllValues(int dbIndex = 0)
         {
             var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
 
-            var keysInSet = GetAllKeysForDataTypeByObjectType(typeof (T), RedisConnectionMultiPlexer, redisDatabaseIndex);
+            var keysInSet = GetAllKeysForDataTypeByObjectType(typeof(T), RedisConnectionMultiPlexer, redisDatabaseIndex);
 
             var targetDatabase = RedisConnectionMultiPlexer.GetDatabase(redisDatabaseIndex);
 
-            return keysInSet.Count > 0 ? 
-                GetValuesBasedOnSetValues(targetDatabase, keysInSet) : 
+            return keysInSet.Count > 0 ?
+                GetValuesBasedOnSetValues(targetDatabase, keysInSet) :
                 GetAllValuesByWildcard(RedisConnectionMultiPlexer, targetDatabase, RedisDatabaseIndex);
         }
 
@@ -127,7 +130,7 @@ namespace RedisJiggeryPokery
         // TODO: Evaluate if this is still a valid approach. Looks stupid.
         private static IList<T> GetAllValuesByWildcard(
             ConnectionMultiplexer redisConnectionMultiplexer,
-            IDatabase targetDatabase, 
+            IDatabase targetDatabase,
             int databaseIndex)
         {
             if (redisConnectionMultiplexer == null) throw new ArgumentNullException("redisConnectionMultiplexer");
@@ -136,7 +139,7 @@ namespace RedisJiggeryPokery
 
             var endPoints = redisConnectionMultiplexer.GetEndPoints();
             var targetKeys = new List<string>();
-            
+
             foreach (var endPoint in endPoints)
             {
                 var targetEndpoint = redisConnectionMultiplexer.GetServer(endPoint);
@@ -163,97 +166,13 @@ namespace RedisJiggeryPokery
 
             if (keyValuePairsRetrieved.Length <= 0) return new List<T>();
 
+            var keysToBeSavedInSeet = targetKeys.Select(x => (RedisValue)x).ToArray();
+
+            targetDatabase.SetAdd(typeof(T).Name, keysToBeSavedInSeet);
+
             var returnPayload = keyValuePairsRetrieved.Select(x => JsonConvert.DeserializeObject<T>(x)).ToList();
 
             return returnPayload;
-        }
-
-        #endregion
-
-        #region InsertKeyValuePair
-
-        public bool InsertOrUpdateKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
-        {
-            if (key == null) throw new ArgumentNullException("key");
-            if (itemToBeSaved == null) throw new ArgumentNullException("itemToBeSaved");
-
-            var serializedObject = JsonConvert.SerializeObject(itemToBeSaved);
-
-            return InsertOrUpdateKeyValuePair(key, serializedObject, dbIndex, optimisticLock);
-        }
-
-        public bool InsertOrUpdateKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
-        {
-            if (key == null) throw new ArgumentNullException("key");
-            if (jsonSerializedItemToBeSaved == null) throw new ArgumentNullException("jsonSerializedItemToBeSaved");
-
-            var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
-
-            if (optimisticLock)
-            {
-                return InsertKeyValuePairWithOptimisticLockAndNoRetries(
-                    RedisConnectionMultiPlexer,
-                    redisDatabaseIndex, 
-                    key,
-                    jsonSerializedItemToBeSaved);
-            }
-
-            return InsertKeyValuePairTransaction(RedisConnectionMultiPlexer, redisDatabaseIndex, key, jsonSerializedItemToBeSaved);
-        }
-
-        private static bool InsertKeyValuePairWithOptimisticLockAndNoRetries(
-            ConnectionMultiplexer connectionMultiplexer, 
-            int databaseIndex, 
-            string key, 
-            string value)
-        {
-            var endPoint = new[]
-            {
-                connectionMultiplexer.GetEndPoints().First()
-            };
-
-            var expiry = TimeSpan.FromSeconds(30);
-
-            using (var redisLockFactory = new RedisLockFactory(endPoint))
-            {
-                using (var redisLock = redisLockFactory.Create(key, expiry))
-                {
-                    if (redisLock.IsAcquired)
-                    {
-                        return InsertKeyValuePairTransaction(connectionMultiplexer, databaseIndex, key, value);
-                    }
-
-                    throw RedisOptimisticLockException.GenerateBasicException(key, value);
-                }
-            }
-        }
-
-        private static bool InsertKeyValuePairTransaction(
-            ConnectionMultiplexer connectionMultiplexer, 
-            int databaseIndex,
-            string key,
-            string value)
-        {
-            if (connectionMultiplexer == null) throw new ArgumentNullException("connectionMultiplexer");
-            if (key == null) throw new ArgumentNullException("key");
-            if (value == null) throw new ArgumentNullException("value");
-
-            var dataBase = connectionMultiplexer.GetDatabase(databaseIndex);
-
-            /**
-             * In Redis Jiggery Pokery, we maintain a set based on object type.
-             * This would enable retrieval based on object types and this is 
-             * facilated by having a set that stores all the keys.
-             * 
-             * The transaction will ensure that the key value pair insertion and the 
-             * corresponding set entry will go hand in hand.
-             * **/
-            var transaction = dataBase.CreateTransaction();
-            transaction.StringSetAsync(key, value);
-            transaction.SetAddAsync(typeof (T).Name, key);
-            var transactionSuccessful = transaction.Execute();
-
-            return transactionSuccessful;
         }
 
         #endregion
@@ -276,7 +195,7 @@ namespace RedisJiggeryPokery
 
         private static IDictionary<string, T> ReturnValuesBasedOnKeySet(
             IList<RedisValue> keysInSet,
-            ConnectionMultiplexer connectionMultiplexer, 
+            ConnectionMultiplexer connectionMultiplexer,
             int dbIndex)
         {
             if (keysInSet == null) throw new ArgumentNullException("keysInSet");
@@ -337,6 +256,100 @@ namespace RedisJiggeryPokery
 
         #endregion
 
+        #region InsertOrUpdateKeyValuePair
+
+        public bool InsertOrUpdateKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
+        {
+            if (key == null) throw new ArgumentNullException("key");
+            if (itemToBeSaved == null) throw new ArgumentNullException("itemToBeSaved");
+
+            var serializedObject = JsonConvert.SerializeObject(itemToBeSaved);
+
+            return InsertOrUpdateKeyValuePair(key, serializedObject, dbIndex, optimisticLock);
+        }
+
+        public bool InsertOrUpdateKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0,
+            bool optimisticLock = false)
+        {
+            if (key == null) throw new ArgumentNullException("key");
+            if (jsonSerializedItemToBeSaved == null) throw new ArgumentNullException("jsonSerializedItemToBeSaved");
+
+            var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
+
+            if (optimisticLock)
+            {
+                return InsertKeyValuePairWithOptimisticLockAndNoRetries(
+                    RedisConnectionMultiPlexer,
+                    redisDatabaseIndex,
+                    key,
+                    jsonSerializedItemToBeSaved);
+            }
+
+            return InsertKeyValuePairTransaction(RedisConnectionMultiPlexer, redisDatabaseIndex, key, jsonSerializedItemToBeSaved);
+        }
+
+        private static bool InsertKeyValuePairWithOptimisticLockAndNoRetries(
+            ConnectionMultiplexer connectionMultiplexer,
+            int databaseIndex,
+            string key,
+            string value)
+        {
+            var endPoint = new[]
+            {
+                connectionMultiplexer.GetEndPoints().First()
+            };
+
+            var expiry = TimeSpan.FromSeconds(30);
+
+            using (var redisLockFactory = new RedisLockFactory(endPoint))
+            {
+                using (var redisLock = redisLockFactory.Create(key, expiry))
+                {
+                    if (redisLock.IsAcquired)
+                    {
+                        return InsertKeyValuePairTransaction(connectionMultiplexer, databaseIndex, key, value);
+                    }
+
+                    throw RedisOptimisticLockException.GenerateBasicException(
+                        key, 
+                        value, 
+                        "Unable to save item because it is locked. Please try again.");
+                }
+            }
+        }
+
+        private static bool InsertKeyValuePairTransaction(
+            ConnectionMultiplexer connectionMultiplexer,
+            int databaseIndex,
+            string key,
+            string value)
+        {
+            if (connectionMultiplexer == null) throw new ArgumentNullException("connectionMultiplexer");
+            if (key == null) throw new ArgumentNullException("key");
+            if (value == null) throw new ArgumentNullException("value");
+
+            var dataBase = connectionMultiplexer.GetDatabase(databaseIndex);
+
+            /**
+             * In Redis Jiggery Pokery, we maintain a set based on object type.
+             * This would enable retrieval based on object types and this is 
+             * facilated by having a set that stores all the keys.
+             * 
+             * The transaction will ensure that the key value pair insertion and the 
+             * corresponding set entry will go hand in hand.
+             * **/
+            var transaction = dataBase.CreateTransaction();
+            transaction.StringSetAsync(key, value);
+            transaction.SetAddAsync(typeof(T).Name, key);
+            var transactionSuccessful = transaction.Execute();
+
+            return transactionSuccessful;
+        }
+
+        #endregion
+
+        #region GetKeyValuePairByKey
+
         public T GetKeyValuePairByKey(string key, int dbIndex = 0)
         {
             var request = new[]
@@ -347,19 +360,27 @@ namespace RedisJiggeryPokery
             return GetKeyValuePairsByKey(request, dbIndex).FirstOrDefault();
         }
 
+        #endregion
+
+        #region GetKeyValuePairsByKey
+
         public IList<T> GetKeyValuePairsByKey(string[] key, int dbIndex = 0)
         {
             var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
 
             var database = RedisConnectionMultiPlexer.GetDatabase(redisDatabaseIndex);
 
-            var redisKeys = key.Select(x => (RedisKey) x).ToArray();
+            var redisKeys = key.Select(x => (RedisKey)x).ToArray();
             var retrievedValues = database.StringGet(redisKeys);
 
             var strongTypedValaues = retrievedValues.Select(x => JsonConvert.DeserializeObject<T>(x)).ToList();
 
             return strongTypedValaues;
         }
+
+        #endregion
+
+        #region DeleteKeyValuePair
 
         public bool DeleteKeyValuePair(string key, int dbIndex = 0, bool optimisticLock = false)
         {
@@ -373,9 +394,9 @@ namespace RedisJiggeryPokery
             var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
 
             return DeleteKeyValuePair(
-                redisKey, 
-                RedisConnectionMultiPlexer, 
-                redisDatabaseIndex, 
+                redisKey,
+                RedisConnectionMultiPlexer,
+                redisDatabaseIndex,
                 optimisticLock);
         }
 
@@ -386,15 +407,15 @@ namespace RedisJiggeryPokery
             var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
 
             return DeleteKeyValuePair(
-                key.Select(x => (RedisKey) x).ToArray(), 
+                key.Select(x => (RedisKey)x).ToArray(),
                 RedisConnectionMultiPlexer,
                 redisDatabaseIndex, optimisticLock);
         }
 
         private static bool DeleteKeyValuePair(
             RedisKey[] keysToBeDeleted,
-            ConnectionMultiplexer connectionMultiplexer, 
-            int dbIndex, 
+            ConnectionMultiplexer connectionMultiplexer,
+            int dbIndex,
             bool optimisticLock)
         {
             if (keysToBeDeleted == null) throw new ArgumentNullException("keysToBeDeleted");
@@ -407,7 +428,6 @@ namespace RedisJiggeryPokery
 
             return DeleteKeyValuePair_NoLock(keysToBeDeleted, connectionMultiplexer, dbIndex);
         }
-
 
         private static bool DeleteKeyValuePair_OptimisticLock_NoRetries(
             RedisKey[] keysToBeDeleted,
@@ -426,6 +446,8 @@ namespace RedisJiggeryPokery
 
             using (var redisLockFactory = new RedisLockFactory(endPoint))
             {
+                var exceptions = new Collection<RedisOptimisticLockException>();
+
                 foreach (var redisKey in keysToBeDeleted)
                 {
                     using (var redisLock = redisLockFactory.Create(redisKey, expiry))
@@ -441,9 +463,29 @@ namespace RedisJiggeryPokery
                         }
                         else
                         {
-                            throw RedisOptimisticLockException.GenerateBasicException(redisKey, string.Empty);
+                            var exception = RedisOptimisticLockException.GenerateBasicException(redisKey, "N/A", "Unable to delete item because it is locked. Please try again.");
+
+                            exceptions.Add(exception);
                         }
                     }
+                }
+
+                if (exceptions.Count > 0)
+                {
+                    var stringBuilder = new StringBuilder();
+
+                    const string messageFormat = "{0}. {1}";
+
+                    for (var i = 0; i < exceptions.Count; i++)
+                    {
+                        var exception = exceptions[i];
+
+                        var formattedMessage = string.Format(messageFormat, i, exception.Message);
+
+                        stringBuilder.AppendLine(formattedMessage);
+                    }
+
+                    throw RedisOptimisticLockException.GenerateBasicException(stringBuilder.ToString());
                 }
             }
 
@@ -464,16 +506,37 @@ namespace RedisJiggeryPokery
 
             if (returnValue != 0)
             {
+                var setKeysToBeRemoved = keysToBeDeleted.Select(x => (RedisValue)((string)x)).ToArray();
+
+                targetDatabase.SetRemove(typeof(T).Name, setKeysToBeRemoved);
+
                 return true;
             }
 
             return false;
         }
 
+        #endregion
+
+        #region GetKeysInSet
+
+        public IList<string> GetKeysInSet(int dbIndex = 0)
+        {
+            var targetDatabase = RedisConnectionMultiPlexer.GetDatabase(dbIndex);
+
+            var keysInSet = targetDatabase.SetMembers(typeof(T).Name);
+
+            var returnPayload = keysInSet.Select(x => (string)x).ToList();
+
+            return returnPayload;
+        }
+
+        #endregion
+
         #region GenericHelpers
 
         private static IList<RedisValue> GetAllKeysForDataTypeByObjectType(
-            Type targetType, 
+            Type targetType,
             ConnectionMultiplexer connectionMultiplexer,
             int databaseIndex)
         {
