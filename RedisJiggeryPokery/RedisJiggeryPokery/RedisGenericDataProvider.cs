@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using JetBrains.Annotations;
 using Newtonsoft.Json;
 using RedisJiggeryPokery.Contracts;
 using RedisJiggeryPokery.Exceptions;
@@ -38,9 +39,9 @@ namespace RedisJiggeryPokery
         /// Defaults to 0 as per StackExchange.Redis API defaults.
         /// </param>
         public RedisGenericDataProvider(
-            string connectionString,
-            int targetDatabaseIndex = 0,
-            ConnectionMultiplexer targetConnectionMultiplexer = null)
+            [NotNull] string connectionString,
+            int targetDatabaseIndex = 0, 
+            [CanBeNull] ConnectionMultiplexer targetConnectionMultiplexer = null)
         {
             _connectionString = connectionString;
             _databaseIndex = targetDatabaseIndex;
@@ -94,6 +95,15 @@ namespace RedisJiggeryPokery
 
         #region GetAllValues
 
+        /// <summary>
+        /// This will get all values based on the object specified when instantiating the dataprovider.
+        /// </summary>
+        /// <param name="dbIndex">
+        /// Redis database index. This defaults to 0 as per StackExchange.Redis defaults.
+        /// </param>
+        /// <returns>
+        /// Returns all items that belonging to this object type in the Redis datastore as a list.
+        /// </returns>
         public IList<T> GetAllValues(int dbIndex = 0)
         {
             var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
@@ -107,16 +117,27 @@ namespace RedisJiggeryPokery
                 GetAllValuesByWildcard(RedisConnectionMultiPlexer, targetDatabase, RedisDatabaseIndex);
         }
 
-        private static IList<T> GetValuesBasedOnSetValues(IDatabase targetDatabase, IList<RedisValue> keysRetrievedFromSet)
+        /// <summary>
+        /// A helper function to retrieve items based on the object type. 
+        /// This function will retrieve values based on te object type in the object type Redis Set.
+        /// 
+        /// This will only be triggered if the set exists.
+        /// </summary>
+        /// <param name="targetDatabase">The database specified in the cller function.</param>
+        /// <param name="keysRetrievedFromSet">Keys retrieved from a set based on object name.</param>
+        /// <returns></returns>
+        private static IList<T> GetValuesBasedOnSetValues(
+            [NotNull] IDatabase targetDatabase,
+            [NotNull] IList<RedisValue> keysRetrievedFromSet)
         {
             if (targetDatabase == null) throw new ArgumentNullException("targetDatabase");
             if (keysRetrievedFromSet == null) throw new ArgumentNullException("keysRetrievedFromSet");
 
             // TODO : Need to examine if the parallel stuff actually has benefits.
             var redisKeys = keysRetrievedFromSet
-                    .Select(x => (RedisKey)((string)x))
-                    .AsParallel()
-                    .ToArray();
+                .Select(x => (RedisKey) ((string) x))
+                .AsParallel()
+                .ToArray();
 
             var retrievedItems = targetDatabase.StringGet(redisKeys).ToList();
             var castedRetrievedItems = retrievedItems
@@ -145,8 +166,8 @@ namespace RedisJiggeryPokery
                 var targetEndpoint = redisConnectionMultiplexer.GetServer(endPoint);
 
                 var targetKeysWithinEndPoint = targetEndpoint
-                    .Keys(databaseIndex, string.Concat(typeof(T).Name, "*"))
-                    .Select(x => (string)x)
+                    .Keys(databaseIndex, string.Concat(typeof (T).Name, "*"))
+                    .Select(x => (string) x)
                     .ToList();
 
                 // Ensure only unique keys get retrieved. Again, looks retarded, needs a closer look.
