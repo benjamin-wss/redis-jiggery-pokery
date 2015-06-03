@@ -1,16 +1,14 @@
 ﻿using System.Collections.Generic;
+using StackExchange.Redis;
 
 namespace RedisJiggeryPokery.Contracts
 {
     public interface IRedisGenericDataProvider<T>
     {
-        /// <summary>
-        /// The connection string to the Redis server
-        /// </summary>
-        string RedisConnectionString { get; set; }
+        ConfigurationOptions RedisConfigurationOptions { get; set; }
 
         /// <summary>
-        /// Database index number of the database
+        /// Specifies the default redis database index number of the database
         /// </summary>
         int RedisDatabaseIndex { get; set; }
 

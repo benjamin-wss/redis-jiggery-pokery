@@ -14,11 +14,9 @@ using StackExchange.Redis;
 
 namespace RedisJiggeryPokery
 {
-    // TODO: Investigate multi endpoint stuff. May prove useful.
-
     public class RedisGenericDataProvider<T> : IRedisGenericDataProvider<T>
     {
-        private string _connectionString;
+        private ConfigurationOptions _redisConfigurationOptions;
         private int _databaseIndex;
         private ConnectionMultiplexer _redisConnectionMultiPlexer;
 
@@ -30,38 +28,31 @@ namespace RedisJiggeryPokery
         /// Putting in null or empty string will result in this object
         /// connecting to localhost.
         /// </param>
-        /// <param name="targetConnectionMultiplexer">
-        /// Connection/Multiplexer to Redis data store. 
-        /// This is here jus in case you want to use your own ConnectionMultiplexer.
+        /// <param name="redisConfigurationOptions">
+        /// Configuration for the redis connection. 
         /// </param>
         /// <param name="targetDatabaseIndex">
         /// Target Redis Database Index.
         /// Defaults to 0 as per StackExchange.Redis API defaults.
         /// </param>
         public RedisGenericDataProvider(
-            [NotNull] string connectionString,
-            int targetDatabaseIndex = 0, 
-            [CanBeNull] ConnectionMultiplexer targetConnectionMultiplexer = null)
+            ConfigurationOptions redisConfigurationOptions,
+            int targetDatabaseIndex = 0)
         {
-            _connectionString = connectionString;
             _databaseIndex = targetDatabaseIndex;
-            _redisConnectionMultiPlexer = targetConnectionMultiplexer;
+            _redisConfigurationOptions = redisConfigurationOptions;
+            _redisConnectionMultiPlexer = ConnectionMultiplexer.Connect(redisConfigurationOptions);
         }
 
-        public string RedisConnectionString
+        public ConfigurationOptions RedisConfigurationOptions
         {
-            get
-            {
-                if (string.IsNullOrEmpty(_connectionString))
-                {
-                    _connectionString = "localhost";
-                }
-
-                return _connectionString;
-            }
+            get { return _redisConfigurationOptions; }
             set
             {
-                _connectionString = value;
+                _redisConfigurationOptions = value;
+
+                // forces a reset of the multiplexer of the configuration has been changed
+                _redisConnectionMultiPlexer = null;
             }
         }
 
@@ -85,12 +76,11 @@ namespace RedisJiggeryPokery
             {
                 if (_redisConnectionMultiPlexer == null)
                 {
-                    _redisConnectionMultiPlexer = ConnectionMultiplexer.Connect(RedisConnectionString);
+                    _redisConnectionMultiPlexer = ConnectionMultiplexer.Connect(RedisConfigurationOptions);
                 }
 
                 return _redisConnectionMultiPlexer;
             }
-            set { _redisConnectionMultiPlexer = value; }
         }
 
         #region GetAllValues
