@@ -394,9 +394,9 @@ namespace RedisJiggeryPokery
             var redisKeys = key.Select(x => (RedisKey)x).ToArray();
             var retrievedValues = database.StringGet(redisKeys);
 
-            var strongTypedValaues = retrievedValues.Select(x => JsonConvert.DeserializeObject<T>(x)).ToList();
+            var castedValues = retrievedValues.Where(x => x.IsNullOrEmpty == false).Select(x => JsonConvert.DeserializeObject<T>(x)).ToList();
 
-            return strongTypedValaues;
+            return castedValues;
         }
 
         #endregion
