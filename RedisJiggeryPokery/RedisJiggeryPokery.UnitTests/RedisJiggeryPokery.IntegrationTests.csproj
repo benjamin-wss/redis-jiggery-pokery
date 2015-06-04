@@ -37,6 +37,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="JetBrains.Annotations">
+      <HintPath>..\packages\JetBrains.Annotations.9.1.1\lib\net20\JetBrains.Annotations.dll</HintPath>
+    </Reference>
     <Reference Include="RedLock, Version=1.1.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\packages\RedLock.net.1.2.0\lib\net45\RedLock.dll</HintPath>
