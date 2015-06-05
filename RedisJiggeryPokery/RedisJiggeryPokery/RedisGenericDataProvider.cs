@@ -23,11 +23,6 @@ namespace RedisJiggeryPokery
         /// <summary>
         /// Constructor for the data provider.
         /// </summary>
-        /// <param name="connectionString">
-        /// Connection string to the target Redis datastore.
-        /// Putting in null or empty string will result in this object
-        /// connecting to localhost.
-        /// </param>
         /// <param name="redisConfigurationOptions">
         /// Configuration for the redis connection. 
         /// </param>
