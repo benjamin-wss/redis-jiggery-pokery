@@ -25,7 +25,7 @@ namespace RedisJiggeryPokery.IntegrationTests
         {
             _redisConfigurationOptions = new ConfigurationOptions()
             {
-                EndPoints = {"localhost"},
+                EndPoints = { "202.71.99.194:6379" },
                 AllowAdmin = true
             };
 
@@ -85,6 +85,8 @@ namespace RedisJiggeryPokery.IntegrationTests
 
             var currentSessionGuid = Guid.NewGuid();
 
+            var lockDetected = false;
+
             var sampleSave = new SampleTestObject()
             {
                 Description = "Hahahahahaha",
@@ -126,11 +128,13 @@ namespace RedisJiggeryPokery.IntegrationTests
                         }
                         else
                         {
-                            var x = 0;
+                            lockDetected = true;
                         }
                     }
                 }
             });
+
+            Assert.IsTrue(lockDetected, "Lock was not detected. Optimistic lock failed to engage.");
 
             //var saveSuccessful = redisDataProvider.InsertOrUpdateKeyValuePair(currentSessionGuid.ToString(), sampleSave, 0, true);
 
