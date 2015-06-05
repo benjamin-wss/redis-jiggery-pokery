@@ -1,7 +1,5 @@
 # Redis Jiggery Pokery
 
-**NOT READY FOR USE YET**
-
 ## Purpose
 
 Redis Jiggery Pokery is meant to provide a familliar Active Record esque mechanism to interact with Redis. This would abstract the jiggery pokery needed to work with a key-value store like Redis.
