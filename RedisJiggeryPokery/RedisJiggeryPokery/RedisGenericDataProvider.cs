@@ -39,6 +39,9 @@ namespace RedisJiggeryPokery
             _redisConnectionMultiPlexer = ConnectionMultiplexer.Connect(redisConfigurationOptions);
         }
 
+        /// <summary>
+        /// Configuration of the Redis connection.
+        /// </summary>
         public ConfigurationOptions RedisConfigurationOptions
         {
             get { return _redisConfigurationOptions; }
@@ -269,9 +272,10 @@ namespace RedisJiggeryPokery
             if (key == null) throw new ArgumentNullException("key");
             if (itemToBeSaved == null) throw new ArgumentNullException("itemToBeSaved");
 
+            var redisKey = GenerateKeyWithProperPrefix(key);
             var serializedObject = JsonConvert.SerializeObject(itemToBeSaved);
 
-            return InsertOrUpdateKeyValuePair(key, serializedObject, dbIndex, optimisticLock);
+            return InsertOrUpdateKeyValuePair(redisKey, serializedObject, dbIndex, optimisticLock);
         }
 
         public bool InsertOrUpdateKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0,
@@ -280,6 +284,7 @@ namespace RedisJiggeryPokery
             if (key == null) throw new ArgumentNullException("key");
             if (jsonSerializedItemToBeSaved == null) throw new ArgumentNullException("jsonSerializedItemToBeSaved");
 
+            var redisKey = GenerateKeyWithProperPrefix(key);
             var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
 
             if (optimisticLock)
@@ -287,7 +292,7 @@ namespace RedisJiggeryPokery
                 return InsertKeyValuePairWithOptimisticLockAndNoRetries(
                     RedisConnectionMultiPlexer,
                     redisDatabaseIndex,
-                    key,
+                    redisKey,
                     jsonSerializedItemToBeSaved);
             }
 
@@ -300,14 +305,9 @@ namespace RedisJiggeryPokery
             string key,
             string value)
         {
-            var endPoint = new[]
-            {
-                connectionMultiplexer.GetEndPoints().First()
-            };
-
             var expiry = TimeSpan.FromSeconds(30);
 
-            using (var redisLockFactory = new RedisLockFactory(endPoint))
+            using (var redisLockFactory = new RedisLockFactory(connectionMultiplexer.GetEndPoints()))
             {
                 using (var redisLock = redisLockFactory.Create(key, expiry))
                 {
@@ -356,11 +356,15 @@ namespace RedisJiggeryPokery
 
         #region GetKeyValuePairByKey
 
-        public T GetKeyValuePairByKey(string key, int dbIndex = 0)
+        public T GetKeyValuePairByKey([NotNull] string key, int dbIndex = 0)
         {
+            if (key == null) throw new ArgumentNullException("key");
+
+            var redisKey = GenerateKeyWithProperPrefix(key);
+
             var request = new[]
             {
-                key
+                redisKey
             };
 
             return GetKeyValuePairsByKey(request, dbIndex).FirstOrDefault();
@@ -370,13 +374,15 @@ namespace RedisJiggeryPokery
 
         #region GetKeyValuePairsByKey
 
-        public IList<T> GetKeyValuePairsByKey(string[] key, int dbIndex = 0)
+        public IList<T> GetKeyValuePairsByKey([NotNull] string[] key, int dbIndex = 0)
         {
+            if (key == null) throw new ArgumentNullException("key");
+
             var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
 
             var database = RedisConnectionMultiPlexer.GetDatabase(redisDatabaseIndex);
 
-            var redisKeys = key.Select(x => (RedisKey)x).ToArray();
+            var redisKeys = key.Select(x => (RedisKey)GenerateKeyWithProperPrefix(x)).ToArray();
             var retrievedValues = database.StringGet(redisKeys);
 
             var castedValues = retrievedValues.Where(x => x.IsNullOrEmpty == false).Select(x => JsonConvert.DeserializeObject<T>(x)).ToList();
@@ -394,7 +400,7 @@ namespace RedisJiggeryPokery
 
             var redisKey = new[]
             {
-                (RedisKey) key
+                (RedisKey) GenerateKeyWithProperPrefix(key)
             };
 
             var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
@@ -413,7 +419,7 @@ namespace RedisJiggeryPokery
             var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
 
             return DeleteKeyValuePair(
-                key.Select(x => (RedisKey)x).ToArray(),
+                key.Select(x => (RedisKey) GenerateKeyWithProperPrefix(x)).ToArray(),
                 RedisConnectionMultiPlexer,
                 redisDatabaseIndex, optimisticLock);
         }
@@ -540,6 +546,16 @@ namespace RedisJiggeryPokery
         #endregion
 
         #region GenericHelpers
+
+        private static string GenerateKeyWithProperPrefix([NotNull] string key)
+        {
+            if (key == null) throw new ArgumentNullException("key");
+
+            if (key.Contains(typeof (T).Name)) return key;
+
+            var processedKey = string.Concat(typeof (T).Name, "_", key);
+            return processedKey;
+        }
 
         private static IList<RedisValue> GetAllKeysForDataTypeByObjectType(
             Type targetType,

@@ -1,9 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Newtonsoft.Json;
+using RedisJiggeryPokery.Exceptions;
 using RedLock;
 using StackExchange.Redis;
 
@@ -20,22 +23,43 @@ namespace RedisJiggeryPokery.IntegrationTests
     {
         private static ConfigurationOptions _redisConfigurationOptions;
 
+        private static ConfigurationOptions RedisConfigurationOptions
+        {
+            get
+            {
+                return _redisConfigurationOptions ?? 
+                (
+                    _redisConfigurationOptions = new ConfigurationOptions()
+                    {
+                        EndPoints = {"localhost"},
+                        AllowAdmin = true
+                    }
+                );
+            }
+        }
+
         [TestInitialize]
         public void SetupTestEnvironment()
         {
-            _redisConfigurationOptions = new ConfigurationOptions()
-            {
-                EndPoints = { "202.71.99.194:6379" },
-                AllowAdmin = true
-            };
+            ClearRedisDbOfValues(RedisConfigurationOptions);
+        }
 
-            ClearRedisDbOfValues(_redisConfigurationOptions);
+        [TestMethod]
+        public void GetAllAsValue_RedisPopulated_Success()
+        {
+            GenerateDataSet(RedisConfigurationOptions);
+
+            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>(RedisConfigurationOptions);
+            var returnedPayload = redisDataProvider.GetAllValues();
+
+            Assert.IsTrue(returnedPayload.Count == 100, "Object did not retrieve all of prepopulated values. Network issues may be at play");
+            Assert.IsTrue(returnedPayload.OfType<SampleTestObject>().ToList().Count == 100, "Object retireved is not of correct type");
         }
 
         [TestMethod]
         public void SaveKeyValuePair_NoLock_Success()
         {
-            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>(_redisConfigurationOptions);
+            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>(RedisConfigurationOptions);
 
             var currentSessionGuid = Guid.NewGuid();
 
@@ -58,7 +82,7 @@ namespace RedisJiggeryPokery.IntegrationTests
         [TestMethod]
         public void SaveKeyValuePair_LockWithNoConcurrentEntries_Success()
         {
-            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>(_redisConfigurationOptions);
+            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>(RedisConfigurationOptions);
 
             var currentSessionGuid = Guid.NewGuid();
 
@@ -81,7 +105,7 @@ namespace RedisJiggeryPokery.IntegrationTests
         [TestMethod]
         public void SaveKeyValuePair_LockWithConcurrentEntries_Success()
         {
-            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>(_redisConfigurationOptions);
+            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>(RedisConfigurationOptions);
 
             var currentSessionGuid = Guid.NewGuid();
 
@@ -93,24 +117,29 @@ namespace RedisJiggeryPokery.IntegrationTests
                 Id = currentSessionGuid
             };
 
+            // Simulating concurrent access.
             Parallel.Invoke(() =>
             {
-                var connectionMultiplexer = ConnectionMultiplexer.Connect(_redisConfigurationOptions);
+                // done by hand to ensure very granular control of the lock.
+                var connectionMultiplexer = ConnectionMultiplexer.Connect(RedisConfigurationOptions);
 
-                using (var redlockFactory = new RedisLockFactory(connectionMultiplexer.GetEndPoints().First()))
+                using (var redlockFactory = new RedisLockFactory(connectionMultiplexer.GetEndPoints()))
                 {
-                    using (var optimisticLock = redlockFactory.Create(currentSessionGuid.ToString(), TimeSpan.FromSeconds(5000)))
+                    var sessionId = string.Concat(sampleSave.GetType().Name, "_", currentSessionGuid.ToString());
+
+                    using (var optimisticLock = redlockFactory.Create(sessionId, TimeSpan.FromSeconds(6000)))
                     {
                         if (optimisticLock.IsAcquired)
                         {
                             redisDataProvider.InsertOrUpdateKeyValuePair(currentSessionGuid.ToString(), sampleSave);
-                            Thread.Sleep(5000);
+                            Thread.Sleep(6000);
                         }
                     }
                 }
             }, () =>
             {
-                var connectionMultiplexer = ConnectionMultiplexer.Connect(_redisConfigurationOptions);
+                // Ensures the first job is always done first.
+                Thread.Sleep(3000);
 
                 var sampleSave2 = new SampleTestObject()
                 {
@@ -118,32 +147,28 @@ namespace RedisJiggeryPokery.IntegrationTests
                     Id = currentSessionGuid
                 };
 
-                using (var redlockFactory = new RedisLockFactory(connectionMultiplexer.GetEndPoints().First()))
+                try
                 {
-                    using (var optimisticLock = redlockFactory.Create(currentSessionGuid.ToString(), TimeSpan.FromSeconds(30)))
-                    {
-                        if (optimisticLock.IsAcquired)
-                        {
-                            redisDataProvider.InsertOrUpdateKeyValuePair(currentSessionGuid.ToString(), sampleSave2);
-                        }
-                        else
-                        {
-                            lockDetected = true;
-                        }
-                    }
+                    redisDataProvider.InsertOrUpdateKeyValuePair(sampleSave2.Id.ToString(), sampleSave2, 0, true);
+                }
+                catch (RedisOptimisticLockException redisOptimisticLockException)
+                {
+                    lockDetected = true;
                 }
             });
 
             Assert.IsTrue(lockDetected, "Lock was not detected. Optimistic lock failed to engage.");
 
-            //var saveSuccessful = redisDataProvider.InsertOrUpdateKeyValuePair(currentSessionGuid.ToString(), sampleSave, 0, true);
-
-            //Assert.IsTrue(saveSuccessful, "Unable to save");
-
             var returnedValue = redisDataProvider.GetKeyValuePairByKey(currentSessionGuid.ToString());
 
             Assert.IsTrue(sampleSave.Id == returnedValue.Id, "Id field returned does not match");
             Assert.IsTrue(sampleSave.Description == returnedValue.Description, "Description field returned does not match");
+        }
+
+        [TestCleanup]
+        public void CleanupTestData()
+        {
+            ClearRedisDbOfValues(RedisConfigurationOptions);
         }
 
         #region Generic Helpers
@@ -161,6 +186,30 @@ namespace RedisJiggeryPokery.IntegrationTests
                 var targetServer = connectionMultiplexer.GetServer(endPoint);
 
                 targetServer.FlushAllDatabases();
+            });
+        }
+
+        private static void GenerateDataSet(
+            [NotNull] ConfigurationOptions redisConfigurationOptions,
+            int numberOfItems = 100,
+            int dbIndex = 0)
+        {
+            if (redisConfigurationOptions == null) throw new ArgumentNullException("redisConfigurationOptions");
+
+            var connectionMultiplexer = ConnectionMultiplexer.Connect(redisConfigurationOptions);
+            var targetDatabase = connectionMultiplexer.GetDatabase(dbIndex);
+
+            Parallel.For(0, numberOfItems, i =>
+            {
+                var sampleTestObject = new SampleTestObject()
+                {
+                    Description = string.Concat("Item number ", i.ToString()),
+                    Id = Guid.NewGuid()
+                };
+
+                var key = string.Concat(sampleTestObject.GetType().Name, "_", sampleTestObject.Id.ToString());
+
+                targetDatabase.StringSet(key, JsonConvert.SerializeObject(sampleTestObject));
             });
         }
 
