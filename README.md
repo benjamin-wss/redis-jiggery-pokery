@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Redis Jiggery Pokery is meant to provide a familliar Active Record esque mechanism to interact with Redis. This would abstract the jiggery pokery needed to work with a key-value store like Redis.
+Redis Jiggery Pokery is meant to provide a familliar repository pattern esque mechanism to interact with Redis. This would abstract the jiggery pokery needed to work with a key-value store like Redis.
   
 You can store your data objects like tables in Active Record where a table is represented like an object. However as Redis is a NoSQL database, this does mean that unlike NHibernate, Dapper, Entity Framework, <insert favourite ORM here>, there are no joins, views or any of that here. Those sort of features would also not be replicated in any way or form as it is defeats the purpose of a key-value store.
 
