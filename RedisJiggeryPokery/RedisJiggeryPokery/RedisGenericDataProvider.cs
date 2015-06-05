@@ -232,7 +232,7 @@ namespace RedisJiggeryPokery
             if (connectionMultiplexer == null) throw new ArgumentNullException("connectionMultiplexer");
 
             var endPoints = connectionMultiplexer.GetEndPoints();
-            var keyPrefix = targetType.Namespace;
+            var keyPrefix = targetType.Name;
             var targetKeys = new List<string>();
 
             foreach (var endPoint in endPoints)

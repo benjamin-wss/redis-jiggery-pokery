@@ -53,7 +53,37 @@ namespace RedisJiggeryPokery.IntegrationTests
             var returnedPayload = redisDataProvider.GetAllAsValues();
 
             Assert.IsTrue(returnedPayload.Count == 100, "Object did not retrieve all of prepopulated values. Network issues may be at play");
-            Assert.IsTrue(returnedPayload.OfType<SampleTestObject>().ToList().Count == 100, "Object retireved is not of correct type");
+            Assert.IsTrue(returnedPayload.OfType<SampleTestObject>().ToList().Count == 100, "Some objects retrieved are not of correct type");
+        }
+
+        [TestMethod]
+        public void GetAllAsValue_RedisUnpopulated_Success()
+        {
+            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>(RedisConfigurationOptions);
+            var returnValues = redisDataProvider.GetAllAsValues();
+
+            Assert.IsTrue(returnValues.Count == 0);
+        }
+
+        [TestMethod]
+        public void GetAllAsDictionary_RedisPopulated_Success()
+        {
+            GenerateDataSet(RedisConfigurationOptions);
+
+            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>(RedisConfigurationOptions);
+            var returnedPayload = redisDataProvider.GetAllAsDictionary();
+
+            Assert.IsTrue(returnedPayload.Count == 100, "Object did not retrieve all of prepopulated key value pairs. Network issues may be at play");
+            Assert.IsTrue(returnedPayload.OfType<KeyValuePair<string, SampleTestObject>>().ToList().Count == 100, "Some objects retrieved are not of correct type");
+        }
+
+        [TestMethod]
+        public void GetAllAsDictionary_RedisUnpopulated_Success()
+        {
+            var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>(RedisConfigurationOptions);
+            var returnValues = redisDataProvider.GetAllAsDictionary();
+
+            Assert.IsTrue(returnValues.Count == 0);
         }
 
         [TestMethod]
