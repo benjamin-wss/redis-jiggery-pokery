@@ -50,7 +50,7 @@ namespace RedisJiggeryPokery.IntegrationTests
             GenerateDataSet(RedisConfigurationOptions);
 
             var redisDataProvider = new RedisGenericDataProvider<SampleTestObject>(RedisConfigurationOptions);
-            var returnedPayload = redisDataProvider.GetAllValues();
+            var returnedPayload = redisDataProvider.GetAllAsValues();
 
             Assert.IsTrue(returnedPayload.Count == 100, "Object did not retrieve all of prepopulated values. Network issues may be at play");
             Assert.IsTrue(returnedPayload.OfType<SampleTestObject>().ToList().Count == 100, "Object retireved is not of correct type");
@@ -69,11 +69,11 @@ namespace RedisJiggeryPokery.IntegrationTests
                 Id = currentSessionGuid
             };
 
-            var saveSuccessful = redisDataProvider.InsertOrUpdateKeyValuePair(currentSessionGuid.ToString(), sampleSave);
+            var saveSuccessful = redisDataProvider.Set(currentSessionGuid.ToString(), sampleSave);
 
             Assert.IsTrue(saveSuccessful, "Unable to save");
 
-            var returnedValue = redisDataProvider.GetKeyValuePairByKey(currentSessionGuid.ToString());
+            var returnedValue = redisDataProvider.Get(currentSessionGuid.ToString());
 
             Assert.IsTrue(sampleSave.Id == returnedValue.Id, "Id field returned does not match");
             Assert.IsTrue(sampleSave.Description == returnedValue.Description, "Description field returned does not match");
@@ -92,11 +92,11 @@ namespace RedisJiggeryPokery.IntegrationTests
                 Id = currentSessionGuid
             };
 
-            var saveSuccessful = redisDataProvider.InsertOrUpdateKeyValuePair(currentSessionGuid.ToString(), sampleSave, 0, true);
+            var saveSuccessful = redisDataProvider.Set(currentSessionGuid.ToString(), sampleSave, 0, true);
 
             Assert.IsTrue(saveSuccessful, "Unable to save");
 
-            var returnedValue = redisDataProvider.GetKeyValuePairByKey(currentSessionGuid.ToString());
+            var returnedValue = redisDataProvider.Get(currentSessionGuid.ToString());
 
             Assert.IsTrue(sampleSave.Id == returnedValue.Id, "Id field returned does not match");
             Assert.IsTrue(sampleSave.Description == returnedValue.Description, "Description field returned does not match");
@@ -131,7 +131,7 @@ namespace RedisJiggeryPokery.IntegrationTests
                     {
                         if (optimisticLock.IsAcquired)
                         {
-                            redisDataProvider.InsertOrUpdateKeyValuePair(currentSessionGuid.ToString(), sampleSave);
+                            redisDataProvider.Set(currentSessionGuid.ToString(), sampleSave);
                             Thread.Sleep(6000);
                         }
                     }
@@ -149,7 +149,7 @@ namespace RedisJiggeryPokery.IntegrationTests
 
                 try
                 {
-                    redisDataProvider.InsertOrUpdateKeyValuePair(sampleSave2.Id.ToString(), sampleSave2, 0, true);
+                    redisDataProvider.Set(sampleSave2.Id.ToString(), sampleSave2, 0, true);
                 }
                 catch (RedisOptimisticLockException redisOptimisticLockException)
                 {
@@ -159,7 +159,7 @@ namespace RedisJiggeryPokery.IntegrationTests
 
             Assert.IsTrue(lockDetected, "Lock was not detected. Optimistic lock failed to engage.");
 
-            var returnedValue = redisDataProvider.GetKeyValuePairByKey(currentSessionGuid.ToString());
+            var returnedValue = redisDataProvider.Get(currentSessionGuid.ToString());
 
             Assert.IsTrue(sampleSave.Id == returnedValue.Id, "Id field returned does not match");
             Assert.IsTrue(sampleSave.Description == returnedValue.Description, "Description field returned does not match");

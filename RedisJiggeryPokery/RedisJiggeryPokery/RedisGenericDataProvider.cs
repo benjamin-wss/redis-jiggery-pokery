@@ -92,7 +92,7 @@ namespace RedisJiggeryPokery
         /// <returns>
         /// Returns all items that belonging to this object type in the Redis datastore as a list.
         /// </returns>
-        public IList<T> GetAllValues(int dbIndex = 0)
+        public IList<T> GetAllAsValues(int dbIndex = 0)
         {
             var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
 
@@ -188,7 +188,7 @@ namespace RedisJiggeryPokery
 
         #region GetAllKeyValuePairs
 
-        public IDictionary<string, T> GetAllKeyValuePairs(int dbIndex = 0)
+        public IDictionary<string, T> GetAllAsDictionary(int dbIndex = 0)
         {
             var redisDatabaseIndex = dbIndex == 0 ? RedisDatabaseIndex : dbIndex;
 
@@ -267,7 +267,7 @@ namespace RedisJiggeryPokery
 
         #region InsertOrUpdateKeyValuePair
 
-        public bool InsertOrUpdateKeyValuePair(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
+        public bool Set(string key, T itemToBeSaved, int dbIndex = 0, bool optimisticLock = false)
         {
             if (key == null) throw new ArgumentNullException("key");
             if (itemToBeSaved == null) throw new ArgumentNullException("itemToBeSaved");
@@ -275,10 +275,10 @@ namespace RedisJiggeryPokery
             var redisKey = GenerateKeyWithProperPrefix(key);
             var serializedObject = JsonConvert.SerializeObject(itemToBeSaved);
 
-            return InsertOrUpdateKeyValuePair(redisKey, serializedObject, dbIndex, optimisticLock);
+            return Set(redisKey, serializedObject, dbIndex, optimisticLock);
         }
 
-        public bool InsertOrUpdateKeyValuePair(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0,
+        public bool Set(string key, string jsonSerializedItemToBeSaved, int dbIndex = 0,
             bool optimisticLock = false)
         {
             if (key == null) throw new ArgumentNullException("key");
@@ -356,7 +356,7 @@ namespace RedisJiggeryPokery
 
         #region GetKeyValuePairByKey
 
-        public T GetKeyValuePairByKey([NotNull] string key, int dbIndex = 0)
+        public T Get([NotNull] string key, int dbIndex = 0)
         {
             if (key == null) throw new ArgumentNullException("key");
 
@@ -367,14 +367,14 @@ namespace RedisJiggeryPokery
                 redisKey
             };
 
-            return GetKeyValuePairsByKey(request, dbIndex).FirstOrDefault();
+            return Get(request, dbIndex).FirstOrDefault();
         }
 
         #endregion
 
         #region GetKeyValuePairsByKey
 
-        public IList<T> GetKeyValuePairsByKey([NotNull] string[] key, int dbIndex = 0)
+        public IList<T> Get([NotNull] string[] key, int dbIndex = 0)
         {
             if (key == null) throw new ArgumentNullException("key");
 
@@ -394,7 +394,7 @@ namespace RedisJiggeryPokery
 
         #region DeleteKeyValuePair
 
-        public bool DeleteKeyValuePair(string key, int dbIndex = 0, bool optimisticLock = false)
+        public bool Delete(string key, int dbIndex = 0, bool optimisticLock = false)
         {
             if (key == null) throw new ArgumentNullException("key");
 
@@ -412,7 +412,7 @@ namespace RedisJiggeryPokery
                 optimisticLock);
         }
 
-        public bool DeleteKeyValuePair(string[] key, int dbIndex = 0, bool optimisticLock = false)
+        public bool Delete(string[] key, int dbIndex = 0, bool optimisticLock = false)
         {
             if (key == null) throw new ArgumentNullException("key");
 
