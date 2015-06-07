@@ -8,7 +8,7 @@ You can store your data objects like tables in Active Record where a table is re
 
 ## Prerequisites
 
-1. A running Redis instance. If you want one to test, you may download it from (here)[https://github.com/MSOpenTech/redis/releases].
+1. A running Redis instance. If you want one to test, you may download it from [here](https://github.com/MSOpenTech/redis/releases).
 2. Some C# mojo.
 
 ## Sample
